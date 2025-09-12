@@ -1,21 +1,16 @@
-import 'dotenv/config';
-import express from 'express';
-import { WebSocketServer } from 'ws';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { spawn } from 'child_process';
-import OpenAI from 'openai';
-import apiRoutes from './api-routes.js';
-import AggressiveTradingEngine from './aggressive-trading-engine.js';
-import DeepSeekClient from './deepseek-client.js';
-import MLPredictor from './ml-predictor.js';
-import BacktestingEngine from './backtesting-engine.js';
-import NotificationService from './notification-service.js';
-import ExchangeIntegrator from './exchange-integrator.js';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const express = require('express');
+const WebSocket = require('ws');
+const fs = require('fs').promises;
+const path = require('path');
+const { spawn } = require('child_process');
+const OpenAI = require('openai');
+const apiRoutes = require('./api-routes');
+const AggressiveTradingEngine = require('./aggressive-trading-engine.js');
+const DeepSeekClient = require('./deepseek-client.js');
+const MLPredictor = require('./ml-predictor.js');
+const BacktestingEngine = require('./backtesting-engine.js');
+const NotificationService = require('./notification-service.js');
+const ExchangeIntegrator = require('./exchange-integrator.js');
 
 class BotManager {
   constructor() {
@@ -47,12 +42,6 @@ class BotManager {
       totalTrades: 0,
       successRate: 0,
       activePairs: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-      pairProfits: {},
-      aggregatedProfit: {
-        hourly: 0,
-        daily: 0,
-        target: 0.61
-      },
       environment: {
         useTestnet: process.env.USE_TESTNET === 'true',
         isSimulation: process.env.SIMULA === 'true',
@@ -61,16 +50,6 @@ class BotManager {
           'https://api.binance.com'
       }
     };
-    
-    // Initialize pairProfits for each active pair
-    this.botMetrics.activePairs.forEach(pair => {
-      this.botMetrics.pairProfits[pair] = {
-        hourlyProfit: 0,
-        dailyProfit: 0,
-        trades: 0,
-        successRate: 0
-      };
-    });
     
     this.setupExpress();
     this.setupWebSocket();
@@ -182,13 +161,13 @@ class BotManager {
       });
       
       // Notificar trade
-      this.notificationService.notifyTrade(
+      await this.notificationService.notifyTrade(
         trade.pair,
         trade.type,
         trade.price || 0,
         trade.amount || 0,
         trade.profit || 0
-      ).catch(error => console.error('Erro ao notificar trade:', error));
+      );
     });
   }
 
@@ -256,35 +235,13 @@ class BotManager {
       }
     });
   }
-    this.app.post('/api/bot/implement-consensus', async (req, res) => {
-      try {
-        const { itemId, topic, chatgptOpinion, deepseekOpinion } = req.body;
-        
-        console.log(`🚀 Implementando consenso: ${topic}`);
-        console.log(`📝 ChatGPT: ${chatgptOpinion}`);
-        console.log(`🤖 DeepSeek: ${deepseekOpinion}`);
-        
-        // Aqui você pode adicionar lógica para realmente implementar as mudanças no bot
-        // Por exemplo, atualizar configurações, modificar estratégias, etc.
-        
-        // Simular implementação bem-sucedida
-        res.json({ 
-          success: true, 
-          message: `Consenso "${topic}" implementado com sucesso`,
-          itemId 
-        });
-      } catch (error) {
-        console.error('❌ Erro ao implementar consenso:', error);
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
 
   setupWebSocket() {
     this.server = this.app.listen(3001, () => {
       console.log('🚀 Bot Manager Server running on port 3001');
     });
 
-    this.wss = new WebSocketServer({ server: this.server });
+    this.wss = new WebSocket.Server({ server: this.server });
     
     this.wss.on('connection', (ws) => {
       console.log('Cliente conectado via WebSocket');
@@ -505,7 +462,7 @@ class BotManager {
 
   broadcastToClients(message) {
     this.wss.clients.forEach((client) => {
-      if (client.readyState === 1) { // WebSocket.OPEN = 1
+      if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(message));
       }
     });
@@ -583,4 +540,4 @@ class BotManager {
 const botManager = new BotManager();
 botManager.startMonitoring();
 
-export default BotManager;
+module.exports = BotManager;

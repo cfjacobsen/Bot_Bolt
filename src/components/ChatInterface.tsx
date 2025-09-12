@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Zap, Brain, MessageSquare } from 'lucide-react';
+import { Send, Bot, User, Zap, Brain } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -37,7 +37,7 @@ const ChatInterface: React.FC = () => {
       const chatGPTResponse: Message = {
         id: Date.now().toString() + '_gpt',
         type: 'chatgpt',
-        content: `[ChatGPT] Analisando "${userMessage}": Para atingir a meta de 0.61%-1% diário, recomendo implementar stop-loss dinâmico baseado em volatilidade ATR. Para BTCUSDT, sugiro RSI < 30 para compra e RSI > 70 para venda, com confirmação de volume acima da média de 20 períodos. Usar take-profit escalonado: 50% em 0.15% e 50% em 0.3%.`,
+        content: `[ChatGPT] Analisando "${userMessage}": Recomendo implementar stop-loss dinâmico baseado em volatilidade ATR. Para BTCUSDT, sugiro RSI < 30 para compra e RSI > 70 para venda, com confirmação de volume acima da média de 20 períodos.`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, chatGPTResponse]);
@@ -48,7 +48,7 @@ const ChatInterface: React.FC = () => {
       const deepSeekResponse: Message = {
         id: Date.now().toString() + '_ds',
         type: 'deepseek',
-        content: `[DeepSeek] Concordo parcialmente. Para máxima agressividade: usar Bollinger Bands para identificar breakouts + MACD para momentum. Implementar correlação entre BTCUSDT e altcoins. Sugestão adicional: trading de alta frequência com 100-200 trades/dia, position sizing de 15-25% do capital por trade em sinais de alta confiança.`,
+        content: `[DeepSeek] Concordo parcialmente. Adiciono: usar Bollinger Bands para identificar breakouts. Para múltiplos pares, implementar correlação entre BTCUSDT e altcoins. Sugestão de take-profit escalonado: 50% em 1.5% e 50% em 3% de lucro.`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, deepSeekResponse]);
@@ -59,7 +59,7 @@ const ChatInterface: React.FC = () => {
       const consensusResponse: Message = {
         id: Date.now().toString() + '_consensus',
         type: 'consensus',
-        content: `[CONSENSO APROVADO] ✅ Implementar: Stop-loss ATR dinâmico + RSI + Volume + Bollinger Bands + MACD. Take-profit escalonado aprovado. Aplicar correlação BTC/ALTs. Position sizing agressivo 15-25%. Frequência: 100-200 trades/dia. Parâmetros otimizados para meta 0.61%-1% diário.`,
+        content: `[CONSENSO] ✅ Implementar: Stop-loss ATR dinâmico + RSI + Volume + Bollinger Bands. Take-profit escalonado aprovado. Aplicar correlação BTC/ALTs. Parâmetros otimizados para mercado atual.`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, consensusResponse]);
@@ -68,7 +68,7 @@ const ChatInterface: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isProcessing) return;
+    if (!inputMessage.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -81,13 +81,6 @@ const ChatInterface: React.FC = () => {
     setInputMessage('');
     
     await simulateAIResponse(inputMessage);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
   };
 
   const getMessageIcon = (type: string) => {
@@ -110,16 +103,8 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const quickQuestions = [
-    "Como otimizar para atingir 0.61% diário?",
-    "Qual a melhor estratégia para BTCUSDT?",
-    "Como implementar stop-loss dinâmico?",
-    "Configurar take-profit escalonado",
-    "Análise de correlação BTC/ALTs"
-  ];
-
   return (
-    <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-purple-500/20 h-[700px] flex flex-col">
+    <div className="bg-white/5 backdrop-blur-lg rounded-xl border border-purple-500/20 h-[600px] flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-purple-500/20">
         <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
@@ -127,23 +112,8 @@ const ChatInterface: React.FC = () => {
           <span>Chat com IAs Colaborativas</span>
         </h2>
         <p className="text-sm text-gray-400 mt-1">
-          ChatGPT e DeepSeek trabalhando juntos para otimizar seu bot agressivo
+          ChatGPT e DeepSeek trabalhando juntos para otimizar seu bot
         </p>
-      </div>
-
-      {/* Quick Questions */}
-      <div className="p-4 border-b border-purple-500/20">
-        <div className="flex flex-wrap gap-2">
-          {quickQuestions.map((question, index) => (
-            <button
-              key={index}
-              onClick={() => setInputMessage(question)}
-              className="text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-3 py-1 rounded-full transition-colors duration-200"
-            >
-              {question}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Messages */}
@@ -160,26 +130,22 @@ const ChatInterface: React.FC = () => {
               <div className="flex-1">
                 <div className="flex items-center space-x-2 mb-2">
                   <span className="font-medium text-white capitalize">
-                    {message.type === 'user' ? 'Você' : 
-                     message.type === 'chatgpt' ? 'ChatGPT' :
-                     message.type === 'deepseek' ? 'DeepSeek' : 'Consenso'}
+                    {message.type === 'user' ? 'Você' : message.type}
                   </span>
                   <span className="text-xs text-gray-400">
                     {message.timestamp.toLocaleTimeString()}
                   </span>
                 </div>
-                <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-                  {message.content}
-                </p>
+                <p className="text-gray-300 leading-relaxed">{message.content}</p>
               </div>
             </div>
           </div>
         ))}
         
         {isProcessing && (
-          <div className="flex items-center justify-center space-x-2 text-purple-400 p-4">
+          <div className="flex items-center justify-center space-x-2 text-purple-400">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-400"></div>
-            <span>IAs analisando sua pergunta...</span>
+            <span>IAs analisando...</span>
           </div>
         )}
         
@@ -189,26 +155,22 @@ const ChatInterface: React.FC = () => {
       {/* Input */}
       <div className="p-4 border-t border-purple-500/20">
         <div className="flex space-x-3">
-          <textarea
+          <input
+            type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Pergunte sobre estratégias agressivas, indicadores, otimizações para atingir 0.61%-1% diário..."
-            className="flex-1 bg-white/10 border border-purple-500/30 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-400 resize-none"
-            rows={2}
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            placeholder="Pergunte sobre estratégias, indicadores, melhorias..."
+            className="flex-1 bg-white/10 border border-purple-500/30 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-purple-400"
             disabled={isProcessing}
           />
           <button
             onClick={handleSendMessage}
             disabled={isProcessing || !inputMessage.trim()}
-            className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200 self-end"
+            className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 text-white p-2 rounded-lg transition-colors duration-200"
           >
             <Send className="w-5 h-5" />
           </button>
-        </div>
-        
-        <div className="mt-2 text-xs text-gray-400">
-          💡 Dica: Pressione Enter para enviar, Shift+Enter para nova linha
         </div>
       </div>
     </div>

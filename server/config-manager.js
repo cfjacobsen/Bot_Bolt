@@ -1,10 +1,6 @@
-import crypto from 'crypto';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const crypto = require('crypto');
+const fs = require('fs').promises;
+const path = require('path');
 
 class ConfigManager {
   constructor() {
@@ -239,4 +235,4 @@ ENCRYPTION_KEY=${encryptionKey}
   }
 }
 
-export default ConfigManager;
+module.exports = ConfigManager;
