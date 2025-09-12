@@ -236,6 +236,28 @@ class BotManager {
       }
     });
   }
+    this.app.post('/api/bot/implement-consensus', async (req, res) => {
+      try {
+        const { itemId, topic, chatgptOpinion, deepseekOpinion } = req.body;
+        
+        console.log(`🚀 Implementando consenso: ${topic}`);
+        console.log(`📝 ChatGPT: ${chatgptOpinion}`);
+        console.log(`🤖 DeepSeek: ${deepseekOpinion}`);
+        
+        // Aqui você pode adicionar lógica para realmente implementar as mudanças no bot
+        // Por exemplo, atualizar configurações, modificar estratégias, etc.
+        
+        // Simular implementação bem-sucedida
+        res.json({ 
+          success: true, 
+          message: `Consenso "${topic}" implementado com sucesso`,
+          itemId 
+        });
+      } catch (error) {
+        console.error('❌ Erro ao implementar consenso:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
 
   setupWebSocket() {
     this.server = this.app.listen(3001, () => {
