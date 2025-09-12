@@ -1,16 +1,16 @@
-const express = require('express');
-const WebSocket = require('ws');
-const fs = require('fs').promises;
-const path = require('path');
-const { spawn } = require('child_process');
-const OpenAI = require('openai');
-const apiRoutes = require('./api-routes');
-const AggressiveTradingEngine = require('./aggressive-trading-engine.js');
-const DeepSeekClient = require('./deepseek-client.js');
-const MLPredictor = require('./ml-predictor.js');
-const BacktestingEngine = require('./backtesting-engine.js');
-const NotificationService = require('./notification-service.js');
-const ExchangeIntegrator = require('./exchange-integrator.js');
+import express from 'express';
+import WebSocket from 'ws';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import OpenAI from 'openai';
+import apiRoutes from './api-routes.js';
+import AggressiveTradingEngine from './aggressive-trading-engine.js';
+import DeepSeekClient from './deepseek-client.js';
+import MLPredictor from './ml-predictor.js';
+import BacktestingEngine from './backtesting-engine.js';
+import NotificationService from './notification-service.js';
+import ExchangeIntegrator from './exchange-integrator.js';
 
 class BotManager {
   constructor() {
@@ -540,4 +540,4 @@ class BotManager {
 const botManager = new BotManager();
 botManager.startMonitoring();
 
-module.exports = BotManager;
+export default BotManager;

@@ -1,6 +1,6 @@
-const crypto = require('crypto');
-const fs = require('fs').promises;
-const path = require('path');
+import crypto from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 class ConfigManager {
   constructor() {
@@ -235,4 +235,4 @@ ENCRYPTION_KEY=${encryptionKey}
   }
 }
 
-module.exports = ConfigManager;
+export default ConfigManager;

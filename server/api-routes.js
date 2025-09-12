@@ -1,5 +1,5 @@
-const express = require('express');
-const ConfigManager = require('./config-manager');
+import express from 'express';
+import ConfigManager from './config-manager.js';
 const router = express.Router();
 
 const configManager = new ConfigManager();
@@ -164,4 +164,4 @@ router.post('/config/apply-mode', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
