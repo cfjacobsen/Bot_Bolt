@@ -13,7 +13,6 @@ import BacktestingEngine from './backtesting-engine.js';
 import NotificationService from './notification-service.js';
 import ExchangeIntegrator from './exchange-integrator.js';
 import { fileURLToPath } from 'url';
-import path from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
