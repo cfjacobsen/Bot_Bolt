@@ -1,5 +1,12 @@
 import express from 'express';
 import ConfigManager from './config-manager.js';
+import path from 'path';
+import { promises as fs } from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
 
 const configManager = new ConfigManager();
@@ -107,8 +114,7 @@ router.post('/config/apply-mode', async (req, res) => {
     
     // Atualizar arquivo .env se existir
     try {
-      const envPath = require('path').join(process.cwd(), '.env');
-      const fs = require('fs').promises;
+      const envPath = path.join(process.cwd(), '.env');
       
       let envContent = '';
       try {

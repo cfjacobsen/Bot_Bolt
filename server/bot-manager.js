@@ -12,6 +12,11 @@ import MLPredictor from './ml-predictor.js';
 import BacktestingEngine from './backtesting-engine.js';
 import NotificationService from './notification-service.js';
 import ExchangeIntegrator from './exchange-integrator.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class BotManager {
   constructor() {
@@ -43,6 +48,12 @@ class BotManager {
       totalTrades: 0,
       successRate: 0,
       activePairs: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+      pairProfits: {},
+      aggregatedProfit: {
+        hourly: 0,
+        daily: 0,
+        target: 0.61
+      },
       environment: {
         useTestnet: process.env.USE_TESTNET === 'true',
         isSimulation: process.env.SIMULA === 'true',
@@ -51,6 +62,16 @@ class BotManager {
           'https://api.binance.com'
       }
     };
+    
+    // Initialize pairProfits for each active pair
+    this.botMetrics.activePairs.forEach(pair => {
+      this.botMetrics.pairProfits[pair] = {
+        hourlyProfit: 0,
+        dailyProfit: 0,
+        trades: 0,
+        successRate: 0
+      };
+    });
     
     this.setupExpress();
     this.setupWebSocket();
