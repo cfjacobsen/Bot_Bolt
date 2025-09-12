@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import WebSocket from 'ws';
 import { promises as fs } from 'fs';
