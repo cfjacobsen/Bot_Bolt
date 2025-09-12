@@ -12,7 +12,7 @@ interface ConsensusItem {
 }
 
 const AIConsensus: React.FC = () => {
-  const [consensusItems] = useState<ConsensusItem[]>([
+  const [consensusItems, setConsensusItems] = useState<ConsensusItem[]>([
     {
       id: '1',
       topic: 'Stop-Loss Dinâmico',
@@ -68,6 +68,54 @@ const AIConsensus: React.FC = () => {
       priority: 'high'
     }
   ]);
+
+  const handleImplementConsensus = async (itemId: string) => {
+    try {
+      // Encontrar o item
+      const item = consensusItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      // Simular implementação
+      console.log(`🚀 Implementando consenso: ${item.topic}`);
+      
+      // Atualizar status para implementado
+      setConsensusItems(prev => 
+        prev.map(i => 
+          i.id === itemId 
+            ? { ...i, implementation: 'implemented' as const }
+            : i
+        )
+      );
+
+      // Simular chamada para API do bot
+      const response = await fetch('/api/bot/implement-consensus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId,
+          topic: item.topic,
+          chatgptOpinion: item.chatgptOpinion,
+          deepseekOpinion: item.deepseekOpinion
+        })
+      });
+
+      if (response.ok) {
+        console.log('✅ Consenso implementado com sucesso no bot');
+      } else {
+        console.error('❌ Erro ao implementar consenso no bot');
+        // Reverter status em caso de erro
+        setConsensusItems(prev => 
+          prev.map(i => 
+            i.id === itemId 
+              ? { ...i, implementation: 'pending' as const }
+              : i
+          )
+        );
+      }
+    } catch (error) {
+      console.error('❌ Erro ao implementar consenso:', error);
+    }
+  };
 
   const getConsensusIcon = (consensus: string) => {
     switch (consensus) {
@@ -189,7 +237,10 @@ const AIConsensus: React.FC = () => {
 
               {item.consensus === 'agreed' && item.implementation === 'pending' && (
                 <div className="mt-4 pt-4 border-t border-gray-600">
-                  <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2">
+                  <button 
+                    onClick={() => handleImplementConsensus(item.id)}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                  >
                     <TrendingUp className="w-4 h-4" />
                     <span>Implementar Agora</span>
                   </button>
