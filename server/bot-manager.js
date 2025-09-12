@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -242,7 +242,7 @@ class BotManager {
       console.log('🚀 Bot Manager Server running on port 3001');
     });
 
-    this.wss = new WebSocket.Server({ server: this.server });
+    this.wss = new WebSocketServer({ server: this.server });
     
     this.wss.on('connection', (ws) => {
       console.log('Cliente conectado via WebSocket');
@@ -463,7 +463,7 @@ class BotManager {
 
   broadcastToClients(message) {
     this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
+      if (client.readyState === 1) { // WebSocket.OPEN = 1
         client.send(JSON.stringify(message));
       }
     });

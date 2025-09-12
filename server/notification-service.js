@@ -1,5 +1,5 @@
 // Sistema de Notificações Push/Email
-import nodemailer from 'nodemailer';
+import { createTransport } from 'nodemailer';
 import webpush from 'web-push';
 
 class NotificationService {
@@ -19,7 +19,7 @@ class NotificationService {
 
   setupEmail() {
     try {
-      this.emailTransporter = nodemailer.createTransporter({
+      this.emailTransporter = createTransport({
         service: 'gmail',
         auth: {
           user: process.env.EMAIL_USER,
