@@ -161,13 +161,13 @@ class BotManager {
       });
       
       // Notificar trade
-      await this.notificationService.notifyTrade(
+      this.notificationService.notifyTrade(
         trade.pair,
         trade.type,
         trade.price || 0,
         trade.amount || 0,
         trade.profit || 0
-      );
+      ).catch(error => console.error('Erro ao notificar trade:', error));
     });
   }
 
