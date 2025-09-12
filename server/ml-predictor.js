@@ -1,5 +1,5 @@
 // Sistema de Machine Learning para Previsão de Preços
-import * as tf from '@tensorflow/tfjs-node';
+import * as tf from '@tensorflow/tfjs';
 import fs from 'fs/promises';
 import path from 'path';
 
