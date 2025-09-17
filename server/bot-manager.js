@@ -1,543 +1,725 @@
+// ==============================================
+// BOT MANAGER - SISTEMA AVANÇADO DE GERENCIAMENTO
+// ==============================================
+
+require('dotenv').config();
 const express = require('express');
 const WebSocket = require('ws');
-const fs = require('fs').promises;
+const https = require('https');
+const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
-const OpenAI = require('openai');
-const apiRoutes = require('./api-routes');
-const AggressiveTradingEngine = require('./aggressive-trading-engine.js');
-const DeepSeekClient = require('./deepseek-client.js');
-const MLPredictor = require('./ml-predictor.js');
-const BacktestingEngine = require('./backtesting-engine.js');
-const NotificationService = require('./notification-service.js');
-const ExchangeIntegrator = require('./exchange-integrator.js');
+const crypto = require('crypto');
+
+// Importações de módulos personalizados
+const AdvancedTradingBot = require('./core/AdvancedTradingBot');
+const ProfitMonitor = require('./core/ProfitMonitor');
+const RiskManager = require('./core/RiskManager');
+const TradingEngine = require('./core/TradingEngine');
+const IACollaborative = require('./ia/IACollaborative');
+const Database = require('./utils/Database');
+const Logger = require('./utils/Logger');
+const Notifier = require('./utils/Notifier');
+const Encryption = require('./utils/Encryption');
+const { SIMULA, TESTNET, MAINNET } = require('./config/modes');
+const tradingConfig = require('./config/trading-config');
+const indicatorsConfig = require('./config/indicators-config');
 
 class BotManager {
   constructor() {
     this.app = express();
-    this.server = null;
     this.wss = null;
-    this.botProcess = null;
-    this.aggressiveEngine = new AggressiveTradingEngine({
-      dailyTargetMin: 0.0061,  // 0.61%
-      dailyTargetMax: 0.01,    // 1.0%
-      hourlyTarget: 0.00025,   // 0.025% por hora
-      useTestnet: process.env.USE_TESTNET === 'true',
-      isSimulation: process.env.SIMULA === 'true'
-    });
-    this.aiClients = {
-      chatgpt: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
-      deepseek: new DeepSeekClient(process.env.DEEPSEEK_API_KEY)
-    };
-    this.mlPredictor = new MLPredictor();
-    this.backtestEngine = new BacktestingEngine();
-    this.notificationService = new NotificationService();
-    this.exchangeIntegrator = new ExchangeIntegrator();
-    this.consensusHistory = [];
-    this.botMetrics = {
-      hourlyTarget: 0.5,
-      dailyTarget: 5.0,
-      currentHourly: 0,
-      currentDaily: 0,
-      totalTrades: 0,
-      successRate: 0,
-      activePairs: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-      environment: {
-        useTestnet: process.env.USE_TESTNET === 'true',
-        isSimulation: process.env.SIMULA === 'true',
-        baseUrl: process.env.USE_TESTNET === 'true' ? 
-          'https://testnet.binance.vision' : 
-          'https://api.binance.com'
-      }
-    };
+    this.port = process.env.PORT || 3000;
+    this.sslEnabled = process.env.SSL_ENABLED === 'true';
     
-    this.setupExpress();
-    this.setupWebSocket();
-    this.setupAggressiveEngine();
-    this.initializeAdvancedFeatures();
+    this.bots = new Map();
+    this.performanceData = new Map();
+    this.iaCollaborative = new IACollaborative();
+    this.db = new Database();
+    this.logger = new Logger();
+    this.notifier = new Notifier();
+    
+    this.initialize();
   }
 
-  async initializeAdvancedFeatures() {
+  async initialize() {
     try {
-      // Inicializar ML
-      await this.mlPredictor.initializeModel();
-      console.log('✅ ML Predictor inicializado');
+      // Inicializar componentes
+      await this.initializeDatabase();
+      await this.initializeEncryption();
+      this.initializeServer();
+      this.initializeWebSocket();
+      this.initializeRoutes();
+      this.initializeEventListeners();
       
-      // Inicializar exchanges
-      await this.exchangeIntegrator.initializeExchanges();
-      console.log('✅ Exchange Integrator inicializado');
+      // Carregar bots ativos do banco de dados
+      await this.loadActiveBots();
       
-      // Iniciar backtesting automático
-      this.startAutomaticBacktesting();
-      
-      // Iniciar monitoramento de arbitragem
-      this.startArbitrageMonitoring();
+      this.logger.info('Bot Manager inicializado com sucesso');
+      this.notifier.sendSystemAlert('Bot Manager Iniciado', 'Sistema inicializado e pronto');
       
     } catch (error) {
-      console.error('❌ Erro ao inicializar funcionalidades avançadas:', error);
+      this.logger.error('Erro na inicialização do Bot Manager:', error);
+      process.exit(1);
     }
   }
 
-  startAutomaticBacktesting() {
-    // Executar backtest a cada 6 horas
-    setInterval(async () => {
-      try {
-        console.log('🔄 Iniciando backtest automático...');
-        
-        const strategy = this.backtestEngine.getAggressiveStrategy();
-        const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
-        
-        for (const symbol of symbols) {
-          const results = await this.backtestEngine.runBacktest(
-            symbol, 
-            strategy, 
-            new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 dias atrás
-            new Date()
-          );
-          
-          if (results && results.totalReturn > 10) {
-            await this.notificationService.notifyAlert(
-              'BACKTEST_SUCCESS',
-              symbol,
-              `Estratégia ${strategy.name} mostrou ${results.totalReturn.toFixed(1)}% de retorno`,
-              'INFO'
-            );
-          }
-        }
-      } catch (error) {
-        console.error('❌ Erro no backtest automático:', error);
+  async initializeDatabase() {
+    await this.db.connect();
+    this.logger.info('Banco de dados inicializado');
+  }
+
+  async initializeEncryption() {
+    // Verificar se a chave de criptografia existe
+    if (!process.env.ENCRYPTION_KEY) {
+      const encryptionKey = crypto.randomBytes(32).toString('hex');
+      this.logger.warn(`Chave de criptografia não encontrada. Gerando nova chave: ${encryptionKey}`);
+      
+      // Adicionar ao .env programaticamente (apenas para desenvolvimento)
+      if (process.env.NODE_ENV === 'development') {
+        fs.appendFileSync('.env', `\nENCRYPTION_KEY=${encryptionKey}`);
       }
-    }, 6 * 60 * 60 * 1000); // 6 horas
-  }
-
-  startArbitrageMonitoring() {
-    // Monitorar arbitragem a cada 30 segundos
-    setInterval(async () => {
-      try {
-        const opportunities = await this.exchangeIntegrator.findArbitrageOpportunities([
-          'BTC/USDT', 'ETH/USDT', 'SOL/USDT'
-        ]);
-        
-        for (const opp of opportunities) {
-          if (opp.spread > 1.0) { // Spread > 1%
-            await this.notificationService.notifyAlert(
-              'ARBITRAGE_OPPORTUNITY',
-              opp.symbol,
-              `Oportunidade de ${opp.spread.toFixed(2)}% entre ${opp.buyExchange} e ${opp.sellExchange}`,
-              'WARNING'
-            );
-            
-            // Auto-executar se spread for muito alto
-            if (opp.spread > 2.0 && process.env.AUTO_ARBITRAGE === 'true') {
-              await this.exchangeIntegrator.executeArbitrage(opp);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('❌ Erro no monitoramento de arbitragem:', error);
-      }
-    }, 30000); // 30 segundos
-  }
-  setupAggressiveEngine() {
-    // Conectar eventos do motor agressivo
-    this.aggressiveEngine.on('metricsUpdate', (metrics) => {
-      this.botMetrics = {
-        ...this.botMetrics,
-        ...metrics
-      };
       
-      this.broadcastToClients({
-        type: 'aggressive_metrics',
-        data: metrics
-      });
-    });
-
-    this.aggressiveEngine.on('tradeExecuted', (trade) => {
-      console.log(`⚡ TRADE AGRESSIVO: ${trade.type} ${trade.pair} - Lucro: ${trade.profit?.toFixed(3)}%`);
-      
-      this.broadcastToClients({
-        type: 'aggressive_trade',
-        data: trade
-      });
-      
-      // Notificar trade
-      await this.notificationService.notifyTrade(
-        trade.pair,
-        trade.type,
-        trade.price || 0,
-        trade.amount || 0,
-        trade.profit || 0
-      );
-    });
-  }
-
-  setupExpress() {
-    this.app.use(express.json());
-    this.app.use(express.static('dist'));
+      process.env.ENCRYPTION_KEY = encryptionKey;
+    }
     
-    // Adicionar rotas da API
-    this.app.use('/api', apiRoutes);
+    Encryption.initialize(process.env.ENCRYPTION_KEY);
+    this.logger.info('Sistema de criptografia inicializado');
+  }
 
-    // API Routes
-    this.app.get('/api/bot/status', (req, res) => {
-      res.json({
-        status: this.botProcess ? 'running' : 'stopped',
-        metrics: this.botMetrics,
-        lastUpdate: new Date().toISOString()
-      });
+  initializeServer() {
+    // Middlewares
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.static(path.join(__dirname, 'public')));
+    
+    // Configuração de CORS
+    this.app.use((req, res, next) => {
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      next();
     });
-
-    this.app.post('/api/bot/start', async (req, res) => {
-      try {
-        await this.startBot();
-        res.json({ success: true, message: 'Bot iniciado com sucesso' });
-      } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    this.app.post('/api/bot/stop', async (req, res) => {
-      try {
-        await this.stopBot();
-        res.json({ success: true, message: 'Bot parado com sucesso' });
-      } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    this.app.post('/api/ai/consensus', async (req, res) => {
-      try {
-        const { topic, context } = req.body;
-        const consensus = await this.getAIConsensus(topic, context);
-        res.json(consensus);
-      } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    this.app.post('/api/code/update', async (req, res) => {
-      try {
-        const { filename, code } = req.body;
-        await this.updateBotCode(filename, code);
-        res.json({ success: true, message: 'Código atualizado com sucesso' });
-      } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    this.app.get('/api/code/:filename', async (req, res) => {
-      try {
-        const { filename } = req.params;
-        const code = await this.getBotCode(filename);
-        res.json({ code });
-      } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-      }
+    
+    // Iniciar servidor HTTP ou HTTPS
+    if (this.sslEnabled) {
+      const options = {
+        key: fs.readFileSync(process.env.SSL_KEY_PATH),
+        cert: fs.readFileSync(process.env.SSL_CERT_PATH)
+      };
+      this.server = https.createServer(options, this.app);
+    } else {
+      this.server = require('http').createServer(this.app);
+    }
+    
+    this.server.listen(this.port, () => {
+      this.logger.info(`Servidor iniciado na porta ${this.port} (SSL: ${this.sslEnabled})`);
     });
   }
 
-  setupWebSocket() {
-    this.server = this.app.listen(3001, () => {
-      console.log('🚀 Bot Manager Server running on port 3001');
-    });
-
+  initializeWebSocket() {
     this.wss = new WebSocket.Server({ server: this.server });
     
     this.wss.on('connection', (ws) => {
-      console.log('Cliente conectado via WebSocket');
+      this.logger.info('Nova conexão WebSocket estabelecida');
       
-      ws.on('message', async (message) => {
-        try {
-          const data = JSON.parse(message);
-          await this.handleWebSocketMessage(ws, data);
-        } catch (error) {
-          ws.send(JSON.stringify({ error: error.message }));
-        }
+      // Enviar dados iniciais para o cliente
+      this.sendInitialData(ws);
+      
+      ws.on('message', (message) => {
+        this.handleWebSocketMessage(ws, message);
       });
-
+      
       ws.on('close', () => {
-        console.log('Cliente desconectado');
+        this.logger.info('Conexão WebSocket fechada');
       });
+    });
+    
+    // Atualizar dados via WebSocket a cada segundo
+    setInterval(() => {
+      this.broadcastData();
+    }, 1000);
+  }
+
+  initializeRoutes() {
+    // Rota de saúde da API
+    this.app.get('/api/health', (req, res) => {
+      res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
+    
+    // Rotas de gerenciamento de bots
+    this.app.post('/api/bots', (req, res) => this.createBot(req, res));
+    this.app.get('/api/bots', (req, res) => this.getBots(req, res));
+    this.app.get('/api/bots/:id', (req, res) => this.getBot(req, res));
+    this.app.put('/api/bots/:id', (req, res) => this.updateBot(req, res));
+    this.app.delete('/api/bots/:id', (req, res) => this.deleteBot(req, res));
+    this.app.post('/api/bots/:id/start', (req, res) => this.startBot(req, res));
+    this.app.post('/api/bots/:id/stop', (req, res) => this.stopBot(req, res));
+    
+    // Rotas de performance
+    this.app.get('/api/performance', (req, res) => this.getPerformance(req, res));
+    this.app.get('/api/performance/:id', (req, res) => this.getBotPerformance(req, res));
+    
+    // Rotas de IA
+    this.app.post('/api/ia/analyze', (req, res) => this.analyzeWithIA(req, res));
+    this.app.post('/api/ia/optimize', (req, res) => this.optimizeWithIA(req, res));
+    
+    // Rotas de configuração
+    this.app.get('/api/config', (req, res) => this.getConfig(req, res));
+    this.app.put('/api/config', (req, res) => this.updateConfig(req, res));
+    
+    // Rota para servir a interface
+    this.app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    });
+    
+    // Manipulador de erros
+    this.app.use((error, req, res, next) => {
+      this.logger.error('Erro na API:', error);
+      res.status(500).json({ error: 'Erro interno do servidor' });
     });
   }
 
-  async handleWebSocketMessage(ws, data) {
-    switch (data.type) {
-      case 'ai_chat':
-        const response = await this.processAIChat(data.message);
-        ws.send(JSON.stringify({ type: 'ai_response', data: response }));
-        break;
-        
-      case 'request_consensus':
-        const consensus = await this.getAIConsensus(data.topic, data.context);
-        ws.send(JSON.stringify({ type: 'consensus_result', data: consensus }));
-        break;
-        
-      case 'bot_metrics':
-        ws.send(JSON.stringify({ type: 'metrics_update', data: this.botMetrics }));
-        break;
-    }
-  }
-
-  async processAIChat(message) {
-    try {
-      // Processar com ChatGPT
-      const chatgptResponse = await this.aiClients.chatgpt.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: `Você é um especialista em trading de criptomoedas e desenvolvimento de bots. 
-                     Analise a mensagem do usuário e forneça insights sobre estratégias de trading, 
-                     indicadores técnicos, gestão de risco e otimizações de código para bots de trading.`
-          },
-          {
-            role: "user",
-            content: message
-          }
-        ],
-        max_tokens: 500
-      });
-
-      // Processar com DeepSeek (cliente real)
-      const deepseekResponse = await this.aiClients.deepseek.chat([
-        {
-          role: "system",
-          content: "Você é um especialista em trading quantitativo e análise técnica. Forneça insights complementares sobre estratégias de trading agressivo."
-        },
-        {
-          role: "user",
-          content: message
-        }
-      ]);
-
-      return {
-        chatgpt: chatgptResponse.choices[0].message.content,
-        deepseek: deepseekResponse,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('Erro no processamento AI:', error);
-      // Fallback para simulação em caso de erro
-      return {
-        chatgpt: "Erro ao conectar com ChatGPT. Verifique sua API key.",
-        deepseek: "Erro ao conectar com DeepSeek. Verifique sua API key.",
-        timestamp: new Date().toISOString()
-      };
-    }
-  }
-
-  async simulateDeepSeekResponse(message) {
-    // Simulação - implementar cliente real do DeepSeek
-    const responses = {
-      'indicadores': 'Recomendo usar RSI combinado com MACD e Bollinger Bands para maior precisão.',
-      'risco': 'Implementar stop-loss dinâmico baseado em ATR e position sizing com Kelly Criterion.',
-      'otimização': 'Usar cache Redis para dados de mercado e implementar processamento assíncrono.',
-      'estratégia': 'Considerar mean reversion em mercados laterais e momentum em tendências fortes.'
-    };
-
-    const key = Object.keys(responses).find(k => message.toLowerCase().includes(k));
-    return responses[key] || 'Análise detalhada necessária. Favor fornecer mais contexto sobre o cenário específico.';
-  }
-
-  async getAIConsensus(topic, context) {
-    try {
-      const chatgptAnalysis = await this.aiClients.chatgpt.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: `Analise o tópico de trading fornecido e dê sua opinião técnica sobre: 
-                     ${topic}. Contexto: ${context}`
-          }
-        ],
-        max_tokens: 300
-      });
-
-      const deepseekAnalysis = await this.simulateDeepSeekResponse(`${topic} ${context}`);
-
-      // Determinar consenso
-      const consensus = this.determineConsensus(
-        chatgptAnalysis.choices[0].message.content,
-        deepseekAnalysis
-      );
-
-      const result = {
-        topic,
-        chatgpt: chatgptAnalysis.choices[0].message.content,
-        deepseek: deepseekAnalysis,
-        consensus: consensus.agreed ? 'agreed' : 'disagreed',
-        recommendation: consensus.recommendation,
-        timestamp: new Date().toISOString()
-      };
-
-      this.consensusHistory.push(result);
-      return result;
-    } catch (error) {
-      console.error('Erro no consenso AI:', error);
-      throw error;
-    }
-  }
-
-  determineConsensus(chatgptResponse, deepseekResponse) {
-    // Lógica simples de consenso - pode ser melhorada com NLP
-    const commonKeywords = ['rsi', 'macd', 'stop-loss', 'atr', 'bollinger'];
-    const chatgptKeywords = commonKeywords.filter(k => 
-      chatgptResponse.toLowerCase().includes(k)
-    );
-    const deepseekKeywords = commonKeywords.filter(k => 
-      deepseekResponse.toLowerCase().includes(k)
-    );
-
-    const agreement = chatgptKeywords.filter(k => deepseekKeywords.includes(k));
-    const agreed = agreement.length > 0;
-
-    return {
-      agreed,
-      recommendation: agreed ? 
-        `Implementar: ${agreement.join(', ')}` : 
-        'Necessária análise adicional - opiniões divergentes'
-    };
-  }
-
-  async startBot() {
-    if (this.botProcess) {
-      throw new Error('Bot já está rodando');
-    }
-
-    try {
-      this.botProcess = spawn('node', ['bot/bot_agressivo5.mjs'], {
-        stdio: 'pipe',
-        env: { ...process.env }
-      });
-
-      this.botProcess.stdout.on('data', (data) => {
-        console.log(`Bot Output: ${data}`);
-        this.broadcastToClients({ type: 'bot_log', data: data.toString() });
-      });
-
-      this.botProcess.stderr.on('data', (data) => {
-        console.error(`Bot Error: ${data}`);
-        this.broadcastToClients({ type: 'bot_error', data: data.toString() });
-      });
-
-      this.botProcess.on('close', (code) => {
-        console.log(`Bot process exited with code ${code}`);
-        this.botProcess = null;
-        this.broadcastToClients({ type: 'bot_stopped', code });
-      });
-
-      console.log('✅ Bot iniciado com sucesso');
-    } catch (error) {
-      console.error('Erro ao iniciar bot:', error);
-      throw error;
-    }
-  }
-
-  async stopBot() {
-    if (!this.botProcess) {
-      throw new Error('Bot não está rodando');
-    }
-
-    this.botProcess.kill('SIGTERM');
-    this.botProcess = null;
-    console.log('🛑 Bot parado');
-  }
-
-  async updateBotCode(filename, code) {
-    const filePath = path.join(__dirname, '..', 'bot', filename);
-    await fs.writeFile(filePath, code, 'utf8');
+  initializeEventListeners() {
+    // Ouvinte para eventos do sistema
+    process.on('SIGINT', () => this.shutdown());
+    process.on('SIGTERM', () => this.shutdown());
     
-    // Se o bot estiver rodando, reiniciar
-    if (this.botProcess) {
-      await this.stopBot();
-      setTimeout(() => this.startBot(), 1000);
+    // Ouvinte para eventos de todos os bots
+    process.on('bot-event', (data) => {
+      this.handleBotEvent(data);
+    });
+  }
+
+  async loadActiveBots() {
+    try {
+      const activeBots = await this.db.getActiveBots();
+      
+      for (const botData of activeBots) {
+        await this.createBotInstance(botData);
+      }
+      
+      this.logger.info(`${activeBots.length} bots ativos carregados`);
+    } catch (error) {
+      this.logger.error('Erro ao carregar bots ativos:', error);
     }
   }
 
-  async getBotCode(filename) {
-    const filePath = path.join(__dirname, '..', 'bot', filename);
-    return await fs.readFile(filePath, 'utf8');
+  async createBotInstance(botData) {
+    try {
+      const bot = new AdvancedTradingBot(botData);
+      this.bots.set(botData.id, bot);
+      
+      // Registrar ouvintes de eventos do bot
+      bot.on('trade', (data) => this.handleBotTrade(botData.id, data));
+      bot.on('performance', (data) => this.handleBotPerformance(botData.id, data));
+      bot.on('error', (error) => this.handleBotError(botData.id, error));
+      
+      // Iniciar bot se estava ativo
+      if (botData.status === 'active') {
+        await bot.start();
+      }
+      
+      this.logger.info(`Bot ${botData.id} inicializado (${botData.mode})`);
+      return bot;
+    } catch (error) {
+      this.logger.error(`Erro ao criar instância do bot ${botData.id}:`, error);
+      throw error;
+    }
   }
 
-  broadcastToClients(message) {
-    this.wss.clients.forEach((client) => {
+  async createBot(req, res) {
+    try {
+      const botConfig = req.body;
+      
+      // Validação básica
+      if (!botConfig.mode || !botConfig.pairs || botConfig.pairs.length === 0) {
+        return res.status(400).json({ error: 'Configuração inválida' });
+      }
+      
+      // Adicionar ID e timestamp
+      botConfig.id = crypto.randomUUID();
+      botConfig.createdAt = new Date().toISOString();
+      botConfig.updatedAt = new Date().toISOString();
+      botConfig.status = 'inactive';
+      
+      // Salvar no banco de dados
+      await this.db.saveBot(botConfig);
+      
+      // Criar instância do bot
+      const bot = await this.createBotInstance(botConfig);
+      
+      res.status(201).json({
+        id: botConfig.id,
+        message: 'Bot criado com sucesso'
+      });
+    } catch (error) {
+      this.logger.error('Erro ao criar bot:', error);
+      res.status(500).json({ error: 'Erro ao criar bot' });
+    }
+  }
+
+  async getBots(req, res) {
+    try {
+      const bots = Array.from(this.bots.values()).map(bot => bot.getConfig());
+      res.json(bots);
+    } catch (error) {
+      this.logger.error('Erro ao obter bots:', error);
+      res.status(500).json({ error: 'Erro ao obter bots' });
+    }
+  }
+
+  async getBot(req, res) {
+    try {
+      const { id } = req.params;
+      const bot = this.bots.get(id);
+      
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      res.json(bot.getConfig());
+    } catch (error) {
+      this.logger.error('Erro ao obter bot:', error);
+      res.status(500).json({ error: 'Erro ao obter bot' });
+    }
+  }
+
+  async updateBot(req, res) {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const bot = this.bots.get(id);
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      // Atualizar configuração
+      await bot.updateConfig(updates);
+      
+      // Salvar no banco de dados
+      updates.updatedAt = new Date().toISOString();
+      await this.db.updateBot(id, updates);
+      
+      res.json({ message: 'Bot atualizado com sucesso' });
+    } catch (error) {
+      this.logger.error('Erro ao atualizar bot:', error);
+      res.status(500).json({ error: 'Erro ao atualizar bot' });
+    }
+  }
+
+  async deleteBot(req, res) {
+    try {
+      const { id } = req.params;
+      const bot = this.bots.get(id);
+      
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      // Parar bot se estiver ativo
+      if (bot.isRunning()) {
+        await bot.stop();
+      }
+      
+      // Remover do mapa e do banco de dados
+      this.bots.delete(id);
+      await this.db.deleteBot(id);
+      
+      res.json({ message: 'Bot removido com sucesso' });
+    } catch (error) {
+      this.logger.error('Erro ao remover bot:', error);
+      res.status(500).json({ error: 'Erro ao remover bot' });
+    }
+  }
+
+  async startBot(req, res) {
+    try {
+      const { id } = req.params;
+      const bot = this.bots.get(id);
+      
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      // Iniciar bot
+      await bot.start();
+      
+      // Atualizar status no banco de dados
+      await this.db.updateBot(id, { 
+        status: 'active',
+        updatedAt: new Date().toISOString()
+      });
+      
+      res.json({ message: 'Bot iniciado com sucesso' });
+    } catch (error) {
+      this.logger.error('Erro ao iniciar bot:', error);
+      res.status(500).json({ error: 'Erro ao iniciar bot' });
+    }
+  }
+
+  async stopBot(req, res) {
+    try {
+      const { id } = req.params;
+      const bot = this.bots.get(id);
+      
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      // Parar bot
+      await bot.stop();
+      
+      // Atualizar status no banco de dados
+      await this.db.updateBot(id, { 
+        status: 'inactive',
+        updatedAt: new Date().toISOString()
+      });
+      
+      res.json({ message: 'Bot parado com sucesso' });
+    } catch (error) {
+      this.logger.error('Erro ao parar bot:', error);
+      res.status(500).json({ error: 'Erro ao parar bot' });
+    }
+  }
+
+  async getPerformance(req, res) {
+    try {
+      const performanceData = {};
+      
+      for (const [id, bot] of this.bots) {
+        performanceData[id] = bot.getPerformance();
+      }
+      
+      // Calcular performance agregada
+      const aggregated = this.calculateAggregatedPerformance(performanceData);
+      
+      res.json({
+        bots: performanceData,
+        aggregated: aggregated
+      });
+    } catch (error) {
+      this.logger.error('Erro ao obter performance:', error);
+      res.status(500).json({ error: 'Erro ao obter performance' });
+    }
+  }
+
+  async getBotPerformance(req, res) {
+    try {
+      const { id } = req.params;
+      const bot = this.bots.get(id);
+      
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      res.json(bot.getPerformance());
+    } catch (error) {
+      this.logger.error('Erro ao obter performance do bot:', error);
+      res.status(500).json({ error: 'Erro ao obter performance do bot' });
+    }
+  }
+
+  async analyzeWithIA(req, res) {
+    try {
+      const { botId, data } = req.body;
+      
+      let bot = null;
+      if (botId) {
+        bot = this.bots.get(botId);
+        if (!bot) {
+          return res.status(404).json({ error: 'Bot não encontrado' });
+        }
+      }
+      
+      // Analisar com IA colaborativa
+      const analysis = await this.iaCollaborative.analyze(data, bot);
+      
+      res.json(analysis);
+    } catch (error) {
+      this.logger.error('Erro na análise com IA:', error);
+      res.status(500).json({ error: 'Erro na análise com IA' });
+    }
+  }
+
+  async optimizeWithIA(req, res) {
+    try {
+      const { botId, parameters } = req.body;
+      
+      const bot = this.bots.get(botId);
+      if (!bot) {
+        return res.status(404).json({ error: 'Bot não encontrado' });
+      }
+      
+      // Otimizar com IA colaborativa
+      const optimization = await this.iaCollaborative.optimize(bot, parameters);
+      
+      res.json(optimization);
+    } catch (error) {
+      this.logger.error('Erro na otimização com IA:', error);
+      res.status(500).json({ error: 'Erro na otimização com IA' });
+    }
+  }
+
+  async getConfig(req, res) {
+    try {
+      const config = {
+        trading: tradingConfig,
+        indicators: indicatorsConfig,
+        modes: { SIMULA, TESTNET, MAINNET }
+      };
+      
+      res.json(config);
+    } catch (error) {
+      this.logger.error('Erro ao obter configuração:', error);
+      res.status(500).json({ error: 'Erro ao obter configuração' });
+    }
+  }
+
+  async updateConfig(req, res) {
+    try {
+      const { trading, indicators } = req.body;
+      
+      // Atualizar configurações (implementar lógica de validação e persistência)
+      this.logger.warn('Atualização de configuração solicitada, mas não totalmente implementada');
+      
+      res.json({ message: 'Configuração atualizada com sucesso' });
+    } catch (error) {
+      this.logger.error('Erro ao atualizar configuração:', error);
+      res.status(500).json({ error: 'Erro ao atualizar configuração' });
+    }
+  }
+
+  handleBotTrade(botId, tradeData) {
+    // Registrar trade
+    this.logger.trade(botId, tradeData);
+    
+    // Atualizar performance
+    this.performanceData.set(botId, {
+      ...this.performanceData.get(botId),
+      lastTrade: tradeData,
+      updatedAt: Date.now()
+    });
+    
+    // Enviar notificação se for um trade significativo
+    if (Math.abs(tradeData.profitLoss) > tradingConfig.notificationThreshold) {
+      this.notifier.sendTradeAlert(botId, tradeData);
+    }
+    
+    // Broadcast via WebSocket
+    this.broadcastData();
+  }
+
+  handleBotPerformance(botId, performanceData) {
+    // Atualizar dados de performance
+    this.performanceData.set(botId, {
+      ...performanceData,
+      updatedAt: Date.now()
+    });
+    
+    // Verificar se está abaixo da meta e ajustar se necessário
+    if (performanceData.status === 'BELOW_TARGET') {
+      const bot = this.bots.get(botId);
+      if (bot) {
+        bot.adjustForPerformance();
+      }
+    }
+    
+    // Broadcast via WebSocket
+    this.broadcastData();
+  }
+
+  handleBotError(botId, error) {
+    this.logger.error(`Erro no bot ${botId}:`, error);
+    
+    // Enviar notificação de erro
+    this.notifier.sendErrorAlert(botId, error);
+    
+    // Parar bot se for um erro crítico
+    if (error.isCritical) {
+      const bot = this.bots.get(botId);
+      if (bot) {
+        bot.stop();
+        
+        // Atualizar status no banco de dados
+        this.db.updateBot(botId, { 
+          status: 'error',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  handleBotEvent(data) {
+    // Processar eventos genéricos de bots
+    this.logger.info(`Evento de bot: ${data.type}`, data);
+    
+    // Broadcast via WebSocket se necessário
+    if (data.broadcast) {
+      this.broadcastData();
+    }
+  }
+
+  handleWebSocketMessage(ws, message) {
+    try {
+      const data = JSON.parse(message);
+      
+      switch (data.type) {
+        case 'subscribe':
+          this.handleSubscribe(ws, data);
+          break;
+        case 'unsubscribe':
+          this.handleUnsubscribe(ws, data);
+          break;
+        case 'command':
+          this.handleCommand(ws, data);
+          break;
+        default:
+          this.logger.warn('Tipo de mensagem WebSocket desconhecido:', data.type);
+      }
+    } catch (error) {
+      this.logger.error('Erro ao processar mensagem WebSocket:', error);
+    }
+  }
+
+  handleSubscribe(ws, data) {
+    // Implementar lógica de subscription para updates específicos
+    ws.subscriptions = ws.subscriptions || {};
+    
+    if (data.channel) {
+      ws.subscriptions[data.channel] = true;
+      this.logger.info(`Cliente inscrito no canal: ${data.channel}`);
+    }
+  }
+
+  handleUnsubscribe(ws, data) {
+    if (ws.subscriptions && data.channel) {
+      delete ws.subscriptions[data.channel];
+      this.logger.info(`Cliente removido do canal: ${data.channel}`);
+    }
+  }
+
+  handleCommand(ws, data) {
+    // Implementar execução de comandos via WebSocket
+    this.logger.info(`Comando recebido: ${data.command}`, data);
+    
+    // Exemplo: reiniciar um bot específico
+    if (data.command === 'restart' && data.botId) {
+      const bot = this.bots.get(data.botId);
+      if (bot) {
+        bot.restart();
+        ws.send(JSON.stringify({ type: 'command_result', success: true }));
+      } else {
+        ws.send(JSON.stringify({ type: 'command_result', success: false, error: 'Bot não encontrado' }));
+      }
+    }
+  }
+
+  sendInitialData(ws) {
+    // Enviar dados iniciais para o cliente recém-conectado
+    const initialData = {
+      type: 'initial_data',
+      bots: Array.from(this.bots.values()).map(bot => bot.getConfig()),
+      performance: Object.fromEntries(this.performanceData),
+      timestamp: Date.now()
+    };
+    
+    ws.send(JSON.stringify(initialData));
+  }
+
+  broadcastData() {
+    if (!this.wss) return;
+    
+    const data = {
+      type: 'update',
+      bots: Array.from(this.bots.values()).map(bot => ({
+        id: bot.id,
+        status: bot.getStatus(),
+        performance: bot.getPerformanceSummary()
+      })),
+      performance: Object.fromEntries(this.performanceData),
+      timestamp: Date.now()
+    };
+    
+    this.wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
+        client.send(JSON.stringify(data));
       }
     });
   }
 
-  // Análise automática de performance
-  async analyzePerformance() {
-    const analysis = await this.getAIConsensus(
-      'Performance Analysis',
-      `Current metrics: ${JSON.stringify(this.botMetrics)}`
-    );
-
-    if (analysis.consensus === 'agreed') {
-      console.log('🤖 AI Consensus:', analysis.recommendation);
-      // Implementar mudanças automáticas se necessário
+  calculateAggregatedPerformance(performanceData) {
+    if (Object.keys(performanceData).length === 0) {
+      return {
+        totalGain: 0,
+        dailyGain: 0,
+        hourlyGain: 0,
+        tradeCount: 0,
+        successRate: 0
+      };
     }
+    
+    let totalGain = 0;
+    let dailyGain = 0;
+    let hourlyGain = 0;
+    let tradeCount = 0;
+    let successfulTrades = 0;
+    
+    for (const botId in performanceData) {
+      const perf = performanceData[botId];
+      totalGain += perf.totalGain || 0;
+      dailyGain += perf.dailyGain || 0;
+      hourlyGain += perf.hourlyGain || 0;
+      tradeCount += perf.tradeCount || 0;
+      successfulTrades += perf.successfulTrades || 0;
+    }
+    
+    return {
+      totalGain,
+      dailyGain,
+      hourlyGain,
+      tradeCount,
+      successRate: tradeCount > 0 ? successfulTrades / tradeCount : 0
+    };
   }
 
-  // Monitoramento contínuo
-  startMonitoring() {
-    setInterval(() => {
-      this.updateMetrics();
-      this.analyzePerformance();
-    }, 60000); // A cada minuto
-  }
-
-  updateMetrics() {
-    // Atualizar timestamp atual
-    this.botMetrics.currentTime = new Date().toISOString();
+  async shutdown() {
+    this.logger.info('Iniciando desligamento do Bot Manager');
     
-    // Simular métricas agressivas realistas
-    const pairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
-    let totalHourlyProfit = 0;
-    let totalDailyProfit = 0;
-    let totalTrades = 0;
-    let totalSuccessRate = 0;
-    
-    pairs.forEach(pair => {
-      // Simular lucros agressivos mas realistas
-      const hourlyGain = (Math.random() * 0.06 - 0.01); // -1% a +5% por hora
-      const dailyGain = this.botMetrics.pairProfits[pair].dailyProfit + (hourlyGain * 0.1);
+    try {
+      // Parar todos os bots
+      for (const [id, bot] of this.bots) {
+        if (bot.isRunning()) {
+          await bot.stop();
+          
+          // Atualizar status no banco de dados
+          await this.db.updateBot(id, { 
+            status: 'inactive',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
       
-      this.botMetrics.pairProfits[pair].hourlyProfit = hourlyGain;
-      this.botMetrics.pairProfits[pair].dailyProfit = Math.max(-2, Math.min(3, dailyGain)); // Limitar entre -2% e +3%
-      this.botMetrics.pairProfits[pair].trades += Math.floor(Math.random() * 4); // 0-3 trades por update
-      this.botMetrics.pairProfits[pair].successRate = 65 + Math.random() * 25; // 65-90% success rate
+      // Fechar conexões
+      if (this.wss) {
+        this.wss.close();
+      }
       
-      totalHourlyProfit += hourlyGain;
-      totalDailyProfit += this.botMetrics.pairProfits[pair].dailyProfit;
-      totalTrades += this.botMetrics.pairProfits[pair].trades;
-      totalSuccessRate += this.botMetrics.pairProfits[pair].successRate;
-    });
-    
-    // Calcular agregados
-    this.botMetrics.aggregatedProfit.hourly = totalHourlyProfit / pairs.length;
-    this.botMetrics.aggregatedProfit.daily = totalDailyProfit / pairs.length;
-    this.botMetrics.totalTrades = totalTrades;
-    this.botMetrics.successRate = totalSuccessRate / pairs.length;
-    
-    // Ajustar meta dinamicamente baseada na performance
-    if (this.botMetrics.aggregatedProfit.daily >= 0.61) {
-      this.botMetrics.aggregatedProfit.target = Math.min(1.0, this.botMetrics.aggregatedProfit.target + 0.01);
-    } else if (this.botMetrics.aggregatedProfit.daily < 0.3) {
-      this.botMetrics.aggregatedProfit.target = Math.max(0.61, this.botMetrics.aggregatedProfit.target - 0.01);
+      if (this.server) {
+        this.server.close();
+      }
+      
+      await this.db.disconnect();
+      
+      this.logger.info('Bot Manager desligado com sucesso');
+      process.exit(0);
+    } catch (error) {
+      this.logger.error('Erro durante o desligamento:', error);
+      process.exit(1);
     }
-
-    this.broadcastToClients({ 
-      type: 'metrics_update', 
-      data: this.botMetrics 
-    });
   }
 }
 
-// Inicializar o gerenciador
+// Inicializar o Bot Manager
 const botManager = new BotManager();
-botManager.startMonitoring();
 
 module.exports = BotManager;

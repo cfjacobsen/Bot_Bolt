@@ -1,4 +1,12 @@
 // utils/logger.js
+class Logger {
+  constructor() {
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+  }
+  
+  // ... implementação completa da classe Logger
+}
+
 class AdvancedLogger {
   logTrade(trade) {
     // Registro detalhado com todos os parâmetros
