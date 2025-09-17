@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run dev -- --host 127.0.0.1 --port 8880"
+    "dev": "npm run dev -- --host 127.0.0.1 --port 8880",
 ",
     "build": "vite build",
     "lint": "eslint .",
